@@ -1,4 +1,5 @@
 import torch
+
 import torch.nn as nn
 import torch.optim as optim
 
@@ -7,7 +8,7 @@ from data.load_data import load_data
 
 
 # Load the dataset
-train_loader, test_loader = load_data()
+train_loader, val_loader, test_loader = load_data()
 
 
 # Create the neural network
@@ -32,41 +33,105 @@ optimizer = optim.Adam(
 # Number of training epochs
 epochs = 50
 
+# Track the best validation loss
+best_val_loss = float("inf")
+
+# Number of epochs to wait for improvement
+patience = 5
+
+# Count epochs without improvement
+patience_counter = 0
+
 
 # Training loop
 for epoch in range(epochs):
 
+    # Training mode
     model.train()
-    total_loss = 0
+
+    total_train_loss = 0
 
     for X_batch, y_batch in train_loader:
 
         # Make predictions
         outputs = model(X_batch).squeeze(1)
 
-        # Calculating the loss
+        # Calculate the loss
         loss = criterion(outputs, y_batch)
 
-        # Clearing previous gradients
+        # Clear previous gradients
         optimizer.zero_grad()
 
-        # Calculating gradients
+        # Calculate gradients
         loss.backward()
 
-        # Updating model parameters
+        # Update model parameters
         optimizer.step()
 
-        total_loss += loss.item()
+        total_train_loss += loss.item()
 
-    average_loss = total_loss / len(train_loader)
+    average_train_loss = total_train_loss / len(train_loader)
 
+
+    # Validation mode
+    model.eval()
+
+    total_val_loss = 0
+
+    with torch.no_grad():
+
+        for X_batch, y_batch in val_loader:
+
+            # Make predictions
+            outputs = model(X_batch).squeeze(1)
+
+            # Calculate validation loss
+            loss = criterion(outputs, y_batch)
+
+            total_val_loss += loss.item()
+
+    average_val_loss = total_val_loss / len(val_loader)
+
+
+    # Display training and validation loss
     print(
         f"Epoch [{epoch + 1}/{epochs}], "
-        f"Loss: {average_loss:.4f}"
+        f"Training Loss: {average_train_loss:.4f}, "
+        f"Validation Loss: {average_val_loss:.4f}"
     )
 
-     
+
+    # Check whether validation loss improved
+    if average_val_loss < best_val_loss:
+
+        # Update the best validation loss
+        best_val_loss = average_val_loss
+
+        # Reset the patience counter
+        patience_counter = 0
+
+        # Save the best model
+        torch.save(
+            model.state_dict(),
+            "models/neural_network.pth"
+        )
+
+        print("Best model saved.")
 
 
-# Saving the trained model
-torch.save(model.state_dict(), "models/neural_network.pth")  
+    else:
+
+        # Increase the patience counter
+        patience_counter += 1
+
+        print(
+            f"No improvement for "
+            f"{patience_counter}/{patience} epochs."
+        )
+
+
+    # Stop training if validation loss has not improved
+    if patience_counter >= patience:
+
+        print("Early stopping triggered.")
+        break
